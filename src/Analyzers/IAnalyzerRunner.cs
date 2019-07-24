@@ -14,7 +14,7 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
     interface IAnalyzerRunner
     {
         Task RunCodeAnalysisAsync(CodeAnalysisResult result,
-                                  DiagnosticAnalyzer analyzers,
+                                  ImmutableArray<DiagnosticAnalyzer> analyzers,
                                   Project project,
                                   AnalyzerOptions analyzerOptions,
                                   ImmutableArray<string> formattableDocumentPaths,

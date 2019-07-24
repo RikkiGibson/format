@@ -17,7 +17,7 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
         public static IAnalyzerRunner Instance { get; } = new ConcurrentAnalyzerRunner();
 
         public async Task RunCodeAnalysisAsync(CodeAnalysisResult result,
-                                               DiagnosticAnalyzer analyzers,
+                                               ImmutableArray<DiagnosticAnalyzer> analyzers,
                                                Project project,
                                                AnalyzerOptions analyzerOptions,
                                                ImmutableArray<string> formattableDocumentPaths,
@@ -26,10 +26,10 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
         {
             var compilation = await project.GetCompilationAsync(cancellationToken);
             var analyzerCompilation = compilation.WithAnalyzers(
-                ImmutableArray.Create(analyzers),
+                analyzers,
                 options: analyzerOptions,
                 cancellationToken);
-            var diagnostics = await analyzerCompilation.GetAllDiagnosticsAsync(cancellationToken);
+            var diagnostics = await analyzerCompilation.GetAnalyzerDiagnosticsAsync(cancellationToken);
             // filter diagnostics
             var filteredDiagnostics = diagnostics.Where(
                 x => !x.IsSuppressed &&

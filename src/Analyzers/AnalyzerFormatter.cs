@@ -42,18 +42,17 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
 
 
             var pairs = _finder.GetAnalyzersAndFixers();
+            var analyzers = pairs.Select(pair => pair.Analyzer).ToImmutableArray();
             var paths = formattableDocuments.Select(x => x.Item1.FilePath).ToImmutableArray();
-            foreach (var (analyzer, codefix) in pairs)
+            var result = new CodeAnalysisResult();
+            await solution.Projects.ForEachAsync(async (project, token) =>
             {
-                var result = new CodeAnalysisResult();
-                await solution.Projects.ForEachAsync(async (project, token) =>
-                {
-                    var options = _finder.GetWorkspaceAnalyzerOptions(project);
-                    await _runner.RunCodeAnalysisAsync(result, analyzer, project, options, paths, logger, token);
-                }, cancellationToken);
+                var options = _finder.GetWorkspaceAnalyzerOptions(project);
+                await _runner.RunCodeAnalysisAsync(result, analyzers, project, options, paths, logger, token);
+            }, cancellationToken);
 
-                solution = await _applier.ApplyCodeFixesAsync(solution, result, codefix, logger, cancellationToken);
-            }
+            var codefix = new CompositeCodeFixProvider(pairs.Select(p => p.Fixer).ToImmutableArray());
+            solution = await _applier.ApplyCodeFixesAsync(solution, result, codefix, logger, cancellationToken);
 
             return solution;
         }

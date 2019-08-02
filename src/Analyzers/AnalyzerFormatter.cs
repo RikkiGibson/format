@@ -2,6 +2,7 @@
 
 # nullable enable
 
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -107,29 +108,51 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
             var pairs = _finder.GetAnalyzersAndFixers();
             var paths = formattableDocuments.Select(x => x.Item1.FilePath).ToImmutableArray();
 
-            // we need to run each codefix iteratively so ensure that all diagnostics are found and fixed
-            foreach (var (analyzer, codefix) in pairs)
+            var result = new CodeAnalysisResult();
+            var analyzers = pairs.Select(pair => pair.Analyzer).ToImmutableArray();
+            await Task.WhenAll(solution.Projects.Select(project =>
             {
-                var result = new CodeAnalysisResult();
-                await solution.Projects.ForEachAsync(async (project, token) =>
-                {
-                    var options = _finder.GetWorkspaceAnalyzerOptions(project);
-                    await _runner.RunCodeAnalysisAsync(result, analyzer, project, options, paths, logger, token);
-                }, cancellationToken);
+                var options = _finder.GetWorkspaceAnalyzerOptions(project);
+                return Task.Run(() => _runner.RunCodeAnalysisAsync(result, analyzers, project, options, paths, logger, cancellationToken));
+            }).ToArray());
 
-                var hasDiagnostics = result.Diagnostics.Any(kvp => kvp.Value.Length > 0);
-                if (hasDiagnostics)
+            var documentVersions = new Dictionary<DocumentId, List<Document>>();
+
+            var changedSolutions = await Task.WhenAll(
+                pairs.Select(async pair =>
                 {
-                    logger.LogTrace($"Applying fixes for {codefix.GetType().Name}");
-                    solution = await _applier.ApplyCodeFixesAsync(solution, result, codefix, logger, cancellationToken);
-                    var changedSolution = await _applier.ApplyCodeFixesAsync(solution, result, codefix, logger, cancellationToken);
-                    if (changedSolution.GetChanges(solution).Any())
+                    logger.LogTrace($"Applying fixes for {pair.Fixer.GetType().Name}");
+                    try
                     {
-                        solution = changedSolution;
+                        return await _applier.ApplyCodeFixesAsync(solution, result, pair.Fixer, logger, cancellationToken);
+                    }
+                    catch (Exception e)
+                    {
+                        logger.LogError(e.Message);
+                        return solution;
+                    }
+                }).ToArray());
+
+            foreach (var changedSolution in changedSolutions)
+            {
+                var changes = changedSolution.GetChanges(solution);
+                foreach (var projectChanges in changes.GetProjectChanges())
+                {
+                    var changedDocuments = projectChanges.GetChangedDocuments(onlyGetDocumentsWithTextChanges: true);
+                    foreach (var id in changedDocuments)
+                    {
+                        if (!documentVersions.ContainsKey(id))
+                        {
+                            documentVersions[id] = new List<Document>();
+                        }
+
+                        var changedDocument = changedSolution.GetDocument(id)!;
+                        documentVersions[id].Add(changedDocument);
                     }
                 }
             }
 
+            // TODO: merge documents, re-run serially to handle conflicts
             return solution;
         }
     }

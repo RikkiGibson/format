@@ -53,6 +53,14 @@ namespace Microsoft.CodeAnalysis.Tools
                     return new WorkspaceFormatResult(filesFormatted: 0, fileCount: 0, exitCode: 1);
                 }
 
+                foreach (var diagnostic in workspace.Diagnostics)
+                {
+                    if (diagnostic.Kind == WorkspaceDiagnosticKind.Failure)
+                    {
+                        logger.LogError(diagnostic.Message);
+                    }
+                }
+
                 var loadWorkspaceMS = workspaceStopwatch.ElapsedMilliseconds;
                 logger.LogTrace(Resources.Complete_in_0_ms, workspaceStopwatch.ElapsedMilliseconds);
 
@@ -104,7 +112,7 @@ namespace Microsoft.CodeAnalysis.Tools
             }
         }
 
-        private static async Task<Workspace> OpenWorkspaceAsync(
+        private static async Task<MSBuildWorkspace> OpenWorkspaceAsync(
             string solutionOrProjectPath,
             bool isSolution,
             bool logWorkspaceWarnings,

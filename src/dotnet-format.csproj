@@ -55,4 +55,8 @@
     <EmbeddedResource Update="Resources.resx" GenerateSource="true" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="DiffMatchPatch\" />
+  </ItemGroup>
+
 </Project>

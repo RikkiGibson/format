@@ -10,8 +10,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-
+using DiffMatchPatch;
 using Microsoft.CodeAnalysis.Options;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Tools.Formatters;
 using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.CodingConventions;
@@ -152,8 +153,50 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
                 }
             }
 
+            var mergedSolution = solution;
+            var dmp = new diff_match_patch();
             // TODO: merge documents, re-run serially to handle conflicts
-            return solution;
+            foreach (var (id, docs) in documentVersions)
+            {
+                while (docs.Count >= 2)
+                {
+                    // TODO: hoist some of this stuff?
+                    var originalText = await solution.GetDocument(id)!.GetTextAsync(cancellationToken);
+                    var originalString = originalText.ToString();
+
+                    var (text1, text2) = (await docs[docs.Count - 1].GetTextAsync(cancellationToken), await docs[docs.Count - 2].GetTextAsync(cancellationToken));
+                    var (string1, string2) = (text1.ToString(), text2.ToString());
+
+                    var patch1 = dmp.patch_make(originalString, string1);
+                    var patch2 = dmp.patch_make(originalString, string2);
+
+                    foreach (var patchItem in patch2)
+                    {
+                        // TODO: ordering?
+                        patch1.Add(patchItem);
+                    }
+
+                    object[] patched = dmp.patch_apply(patch1, originalString);
+                    var (patchedText, wasPatchApplied) = ((string)patched[0], (bool[])patched[1]);
+
+                    for (var i = 0; i < wasPatchApplied.Length; i++)
+                    {
+                        if (!wasPatchApplied[i])
+                        {
+                            // TODO: flag file as needing serial analysis/fixing
+                            logger.LogWarning("Didn't apply part of the patch" + patch1[i]);
+                        }
+                    }
+
+                    var newText = SourceText.From(patchedText, originalText.Encoding, originalText.ChecksumAlgorithm);
+                    var newDoc = docs[docs.Count - 1].WithText(newText);
+                    docs[docs.Count - 2] = newDoc;
+                    docs.RemoveAt(docs.Count - 1);
+                    mergedSolution = mergedSolution.WithDocumentText(id, newText);
+                }
+            }
+
+            return mergedSolution;
         }
     }
 }

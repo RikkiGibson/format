@@ -40,7 +40,7 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
             // filter diagnostics
             var filteredDiagnostics = diagnostics.Where(
                 x => !x.IsSuppressed &&
-                     x.Severity >= DiagnosticSeverity.Warning &&
+                     //x.Severity >= DiagnosticSeverity.Warning &&
                      x.Location.IsInSource &&
                      formattableDocumentPaths.Contains(x.Location.SourceTree.FilePath, StringComparer.OrdinalIgnoreCase));
             result.AddDiagnostic(project, filteredDiagnostics);
